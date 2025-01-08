@@ -20,6 +20,8 @@ from attn_gym.masks.document_mask import length_to_offsets
 from attn_gym.masks import (
     causal_mask,
     generate_sliding_window,
+    generate_sliding_chunk,
+    generate_chunk_wise,
     generate_prefix_lm_mask,
     generate_doc_mask_mod,
 )
@@ -47,10 +49,10 @@ torch.manual_seed(0)
 torch._dynamo.config.cache_size_limit = 1000
 
 # Compile the flex_attention function
-flex_attention = torch.compile(flex_attention, dynamic=False)
+#flex_attention = torch.compile(flex_attention, dynamic=False)
 
 # For better performance, you can use:
-# flex_attention = torch.compile(_flex_attention, dynamic=False, mode="max-autotune-no-cudagraphs")
+flex_attention = torch.compile(flex_attention, dynamic=False, mode="max-autotune-no-cudagraphs")
 
 data_type = torch.float16
 
@@ -78,12 +80,12 @@ def print_header(text):
 def test_mask(
     score_mod: Optional[_score_mod_signature] = None,
     mask_mod: Optional[_mask_mod_signature] = None,
-    B: int = 16,
-    H: int = 16,
-    S: int = 8192,
-    D: int = 64,
+    B: int = 1,
+    H: int = 4,
+    S: int = 2048,
+    D: int = 256,
     skip_correctness: bool = False,
-    print_mask: bool = True,
+    print_mask: bool = False,
     device: str = "cuda",
 ):
     assert score_mod is not None or mask_mod is not None, "Must provide a score_mod or mask_mod"
@@ -95,8 +97,10 @@ def test_mask(
     mask = create_mask(sdpa_mask_fn, 1, 1, S, S, device=device)
 
     qkv = [
+        torch.randn(B, H, S, D, device=device, dtype=data_type, requires_grad=True),
+        torch.randn(B, H, S, D, device=device, dtype=data_type, requires_grad=True),
         torch.randn(B, H, S, D, device=device, dtype=data_type, requires_grad=True)
-        for _ in range(3)
+        #for _ in range(3)
     ]
     gradOut = torch.randn(B, H, S, D, device=device, dtype=torch.float16)
 
@@ -227,6 +231,45 @@ def main(examples: List[str] = ["all"]):
     Args:
         examples: List of examples to run. If "all" is specified, all examples will be run.
     """
+    available_examples = {
+        #"causal": lambda: test_mask(mask_mod=causal_mask),
+        #"alibi": lambda: test_mask(score_mod=generate_alibi_bias(16), skip_correctness=True),
+        #"sliding_window": lambda: test_mask(mask_mod=generate_sliding_window(window_size=512)),
+        "chunk_wise01": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=512), S=2048),
+        "chunk_wise02": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=512), S=4096),
+        "chunk_wise03": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=512), S=8192),
+        "chunk_wise04": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=512), S=16384),
+        "chunk_wise05": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=512), S=32768),
+        "chunk_wise06": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=1024), S=2048),
+        "chunk_wise07": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=1024), S=4096),
+        "chunk_wise08": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=1024), S=8192),
+        "chunk_wise09": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=1024), S=16384),
+        "chunk_wise10": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=1024), S=32768),
+        "chunk_wise11": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=2048), S=2048),
+        "chunk_wise12": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=2048), S=4096),
+        "chunk_wise13": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=2048), S=8192),
+        "chunk_wise14": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=2048), S=16384),
+        "chunk_wise15": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=2048), S=32768),
+        "chunk_wise16": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=4096), S=2048),
+        "chunk_wise17": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=4096), S=4096),
+        "chunk_wise18": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=4096), S=8192),
+        "chunk_wise19": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=4096), S=16384),
+        "chunk_wise20": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=4096), S=32768),
+        "chunk_wise21": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=8192), S=2048),
+        "chunk_wise22": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=8192), S=4096),
+        "chunk_wise23": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=8192), S=8192),
+        "chunk_wise24": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=8192), S=16384),
+        "chunk_wise25": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=8192), S=32768),
+        #"sliding_chunk": lambda: test_mask(mask_mod=generate_sliding_chunk(window_size=512)),
+        #"prefix_lm": lambda: test_mask(mask_mod=generate_prefix_lm_mask(prefix_length=1024)),
+        #"document": lambda: run_document_masking(max_seq_len=32768, num_docs=12),
+        #"softcap": lambda: test_mask(
+        #    score_mod=generate_tanh_softcap(30, approx=False), skip_correctness=True
+        #),
+        #"softcap_approx": lambda: test_mask(
+        #    score_mod=generate_tanh_softcap(30, approx=True), skip_correctness=True
+        #),
+    }
 
     if "all" in examples:
         ex_to_run = list(AVAILABLE_EXAMPLES.keys())
